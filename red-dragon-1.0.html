@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legend of the Red Dragon II — a browser homage</title>
+<style>
+  :root{
+    --bg:#050605; --fg:#c8ccd0; --green:#39d353; --amber:#e3b341;
+    --cyan:#58c4dd; --mag:#ff7edb; --red:#ff5252; --dim:#7a8288;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:"Cascadia Mono","Consolas","Lucida Console","Courier New",monospace;
+    font-size:16px; line-height:1.35;
+  }
+  #wrap{max-width:920px;margin:0 auto;display:flex;flex-direction:column;height:100vh;padding:0 10px}
+  header{
+    text-align:center;color:var(--red);font-weight:bold;letter-spacing:2px;
+    padding:8px 0 6px;border-bottom:1px solid #1d241d;flex:none;font-size:15px;
+    text-shadow:0 0 8px rgba(255,60,60,.55);
+  }
+  header .sub{color:var(--dim);font-weight:normal;letter-spacing:1px;font-size:12px}
+  #term{flex:1;overflow-y:auto;padding:10px 2px 14px;scrollbar-width:thin;scrollbar-color:#24402a var(--bg)}
+  #term::-webkit-scrollbar{width:8px}
+  #term::-webkit-scrollbar-thumb{background:#24402a}
+  .line{white-space:pre-wrap;word-wrap:break-word;min-height:1.35em;margin:1px 0}
+  .y{color:var(--amber)} .c{color:var(--cyan)} .g{color:var(--green)}
+  .r{color:var(--red)} .m{color:var(--mag)} .d{color:var(--dim)} .o{color:#ffa657}
+  .b{font-weight:bold} .bg{color:var(--green);font-weight:bold}
+  .art{color:var(--red);text-shadow:0 0 10px rgba(255,60,60,.45);margin:6px 0;user-select:none}
+  .art.gold{color:var(--amber);text-shadow:0 0 10px rgba(227,179,65,.4)}
+  .art.cyan{color:var(--cyan);text-shadow:0 0 10px rgba(88,196,221,.4)}
+  .art.g{color:var(--green);text-shadow:0 0 10px rgba(57,211,83,.35);user-select:none}
+  .art.y{color:var(--amber);text-shadow:0 0 10px rgba(227,179,65,.35);user-select:none}
+  .art.o{color:#ffa657;text-shadow:0 0 10px rgba(255,166,87,.35);user-select:none}
+  .art.c2{color:var(--cyan);text-shadow:0 0 10px rgba(88,196,221,.35);user-select:none}
+  .hr{color:#2c3a2c;margin:4px 0}
+  .opt{cursor:pointer;border-radius:2px}
+  .opt:hover{background:#15291a;color:#fff}
+  #status{
+    flex:none;border-top:1px solid #1d241d;background:#080a08;
+    padding:6px 8px;font-size:13.5px;line-height:1.5;color:#9fd8a8;
+  }
+  #status .warn{color:var(--red)}
+  #inputrow{flex:none;display:flex;align-items:center;gap:8px;padding:8px 2px 10px;background:var(--bg)}
+  #inputrow .prompt{color:var(--green);font-weight:bold}
+  #cmd{
+    flex:1;background:transparent;border:none;outline:none;color:var(--green);
+    font:inherit;caret-color:var(--green);
+  }
+  #scan{position:fixed;inset:0;pointer-events:none;z-index:5;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);}
+  #scan.off{display:none}
+  #vig{position:fixed;inset:0;pointer-events:none;z-index:4;
+    background:radial-gradient(ellipse at center,transparent 62%,rgba(0,0,0,.5) 100%);}
+  #hurt{position:fixed;inset:0;pointer-events:none;z-index:6;opacity:0;transition:opacity .35s;
+    background:radial-gradient(ellipse at center,rgba(255,0,0,0) 45%,rgba(255,0,0,.38) 100%);}
+  @media (max-width:640px){ body{font-size:14px} #status{font-size:12px} }
+</style>
+</head>
+<body>
+<div id="vig"></div>
+<div id="scan"></div>
+<div id="hurt"></div>
+<div id="wrap">
+  <header>
+    LEGEND OF THE <span style="color:#ff2020">RED</span> DRAGON
+    <div class="sub" id="hdr-sub">a browser homage to the BBS door classic &middot; v1.0: sound &amp; banners</div>
+  </header>
+  <main id="term"></main>
+  <footer id="status"></footer>
+  <div id="inputrow"><span class="prompt">&gt;</span><input id="cmd" autocomplete="off" spellcheck="false" autofocus></div>
+</div>
+<script>
+"use strict";
+/* ============================================================
+   LEGEND OF THE RED DRAGON — v1.0 — single-file browser homage
+   Inspired by Seth Able Robinson's 1989 BBS door game.
+   All code and text here is original. Saves to localStorage
+   (same save format as the beta — export codes are portable).
+   ============================================================ */
+
+/* ---------------- helpers ---------------- */
+const $  = s => document.querySelector(s);
+const rndi = (a,b) => a + Math.floor(Math.random()*(b-a+1));
+const pick = a => a[Math.floor(Math.random()*a.length)];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const SAVE_KEY='lord_save_v1', HOF_KEY='lord_hof_v1', OPT_KEY='lord_opts_v1';
+const money = n => n.toLocaleString('en-US');
+
+/* ---------------- content tables ---------------- */
+const CLASSES = {
+  dk:{name:'Death Knight', primary:'str', blurb:'Hits like a landslide.  Special: SKULLSPLITTER.'},
+  sm:{name:'Shadow Mage',  primary:'cha', blurb:'Burns first, asks never.  Special: MYSTIC FIRE (ignores armor).'},
+  vh:{name:'Valhalla',     primary:'def', blurb:'A little of everything, plus sticky fingers.  Special: FEINT & FILCH.'},
+};
+
+const WEAPONS = [
+  {n:"Rusty Egg Spoon",    p:1,  c:20},
+  {n:"Woodcutter's Axe",   p:3,  c:150},
+  {n:"Iron Short Sword",   p:6,  c:600},
+  {n:"Steel Longsword",    p:10, c:2000},
+  {n:"Silvered Saber",     p:15, c:6000},
+  {n:"Runed Claymore",     p:21, c:15000},
+  {n:"Dwarven Warblade",   p:28, c:40000},
+  {n:"DRAGONSBANE",        p:36, c:90000},
+];
+const ARMORS = [
+  {n:"Raggedy Smock",      d:1,  c:20},
+  {n:"Padded Vest",        d:3,  c:150},
+  {n:"Leather Cuirass",    d:6,  c:600},
+  {n:"Chainmail Shirt",    d:10, c:2000},
+  {n:"Steel Plate",        d:15, c:6000},
+  {n:"Elven Mail",         d:21, c:15000},
+  {n:"Adamant Cuirass",    d:28, c:40000},
+  {n:"DRAGONSCALE MAIL",   d:36, c:90000},
+];
+
+/* monsters by tier 1..11 : [name, quip] */
+const MONS = [ null,
+  [["Sewer Rat","It chitters defiantly."],["Belligerent Chicken","It has opinions."]],
+  [["Kobold Pickpocket","It tries to pickpocket itself."],["Giant Garden Spider","Eight eyes, zero manners."]],
+  [["Bog Goblin","Smells like regret."],["Rabid Sheep","Baa, but menacing."]],
+  [["Orc Whelp","Small, green, furious."],["Highwayman","'Your gold or a beating, friend.'"]],
+  [["Dire Wolf","Very dire. Very wolf."],["Cutthroat Mercenary","Strictly cash upfront."]],
+  [["Grumpy Ogre","Woke up on the wrong side of the mud."],["Harpy","Sings off-key. Painfully."]],
+  [["Mountain Troll","Regenerates grudges, too."],["Barrow Wraith","Quite dead. Quite rude."]],
+  [["Minotaur","Half bull, all beef."],["Two-Headed Ettin","Argues with itself mid-swing."]],
+  [["Stone Golem","A boulder with ambition."],["Vampire","Cape included."]],
+  [["Fire Giant","Moderately on fire."],["Lich","Undead and loving it."]],
+  [["Demon Knight","Fell out of a hellish tree, hit every branch."],["Chimera","Three monsters for one price."]],
+];
+
+const JOKES = [
+  "How do you get a one-armed adventurer out of a tree? Wave.",
+  "What's a vampire's favorite fruit? Neck-tarines.",
+  "Why don't skeletons duel each other? Nobody's got the guts.",
+  "I asked the Red Dragon for a light. He gave me the whole match.",
+  "Why did the troll cross the road? He didn't. Roads are for people who can't regenerate.",
+  "What did the lich say to the necromancer? 'You complete me.'",
+  "The ogre tried stand-up comedy. The audience didn't survive the punchline.",
+  "Why did the chicken join the militia? To get to the other siege.",
+  "A kobold walks into the inn. The barkeep says 'We don't serve kobolds.' The kobold says 'Good. I brought my own rat.'",
+  "Why don't dragons play hide and seek? Nobody wants to seek a fire hazard.",
+  "What do you call a minotaur in a field? A moo-tant.",
+  "I wrote a ballad about the sewers. It went platinum down there.",
+];
+
+const INSULTS = [
+  "Well, well. If it isn't {N}. I've seen better sword arms on a scarecrow.",
+  "Careful, {N}. The sewer rats unionized. They demand you stop picking on them.",
+  "{N}! Still wearing that {A}? Fashion victims can't be heroes.",
+  "I spat in the direction of your house today. Improved the neighborhood.",
+  "They say practice makes perfect. You must practice losing a LOT.",
+  "The healer asked me to say 'hi.' Said you'd be along shortly.",
+  "Nice weapon. My grandmother has a bigger butter knife.",
+  "I'd challenge you, but kicking puppies is frowned upon.",
+  "You smell like a dungeon's laundry day, {N}.",
+  "Even the faeries pity you, {N}. The EVIL ones.",
+];
+
+const GOSSIPS = [
+  "They say {R} bought new boots with their winnings. Very shiny. Very lootable.",
+  "The smith swears the Red Dragon flew over the north ridge last night. He also swears he's tall, so who knows.",
+  "{R} lost a duel with a Rabid Sheep. The sheep is now ranked.",
+  "Old Man Fodder claims he saw a golden goose in the forest. He also claims he's sane.",
+  "The King raised the bounty on dragon-slaying advice. 'GOOD advice,' he clarified.",
+  "Barak cried at the healer's last week. Nobody mentions it. Everybody mentions it.",
+  "{R} was seen flirting at the inn. There was a slap. There may have been two.",
+  "A merchant is selling 'genuine dragon scales.' They are painted tortoise shells.",
+  "The forest faeries are unionizing. Expect fewer blessings.",
+  "Someone carved '{N} was here' into the old oak. Barak added '...and it was terrible.'",
+  "A traveling bard knows four songs. Two of them are about soup.",
+  "The bank raised its interest rate out of pure spite for the dragon.",
+  "They say the dragon hoards princesses. Mostly it hoards coins and bad poetry.",
+  "{R} tried to bluff a Stone Golem. The golem called it.",
+];
+
+const FOREST_FLAVOR = [
+  "You watch two squirrels argue over an acorn. Riveting.",
+  "You find a nice stick. You keep the stick.",
+  "Clouds. Very dragon-shaped clouds. Probably nothing.",
+  "You practice your battle cry at an oak tree. The oak is unimpressed.",
+  "A butterfly lands on your weapon. It seems satisfied with the enchantment.",
+  "You pass a shrine to forgotten heroes. Someone left sandwiches.",
+];
+
+const RIVAL_SEED = [
+  {name:'Kaelwyn',  cls:'Shadow Mage'},
+  {name:'Brunhilda',cls:'Death Knight'},
+  {name:'Fenwick',  cls:'Valhalla'},
+  {name:'Morgause', cls:'Shadow Mage'},
+  {name:'Dorgan',   cls:'Death Knight'},
+];
+
+/* cumulative XP required to REACH a level (index = level) */
+const LEVEL_XP = {2:120,3:350,4:750,5:1400,6:2400,7:4000,8:6400,9:10000,10:15000,11:22000,12:32000};
+
+/* ---------------- state ---------------- */
+let S = null;               // the whole save
+let OPT = {crt:true, classicGate:false, sfx:true, music:true};
+let curOpts = null;         // current menu options
+let askCb = null;           // free-text callback when set
+let lastMenuFn = null;      // for reprint on empty Enter
+
+/* ---------------- audio (Web Audio, all synthesized) ---------------- */
+const AU = {
+  ctx:null,
+  lastTune:null,
+  music:{cur:null, timer:null},
+  init(){
+    if(!this.ctx){
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(AC){ try{ this.ctx=new AC(); }catch(e){ this.ctx=null; } }
+    }
+    if(this.ctx && this.ctx.state==='suspended') this.ctx.resume();
+    if(this.ctx && !this._hooked){
+      this._hooked=true;
+      this.ctx.addEventListener('statechange',()=>{ if(this.ctx && this.ctx.state==='running') this.nudge(); });
+    }
+  },
+  nudge(){
+    /* when the browser finally unlocks audio, restart whatever tune should be playing */
+    if(this.ctx && this.ctx.state==='running' && OPT.music && this.lastTune && !this.music.timer){
+      this.playTune(this.lastTune);
+    }
+  },
+  beep(freq,dur,type,vol,when,slideTo){
+    if(!this.ctx) return;
+    const t=this.ctx.currentTime+(when||0);
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type||'square';
+    o.frequency.setValueAtTime(freq,t);
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(Math.max(20,slideTo),t+dur);
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(t); o.stop(t+dur+0.03);
+  },
+  note(midi,dur,type,vol,when){
+    if(!this.ctx) return;
+    const f=440*Math.pow(2,(midi-69)/12);
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,when);
+    g.gain.linearRampToValueAtTime(vol,when+0.012);
+    g.gain.setValueAtTime(vol,when+Math.max(0.012,dur-0.06));
+    g.gain.exponentialRampToValueAtTime(0.0001,when+dur);
+    o.connect(g).connect(this.ctx.destination);
+    o.start(when); o.stop(when+dur+0.05);
+  },
+  sfx(name){
+    if(!OPT.sfx) return;
+    this.init(); if(!this.ctx) return;
+    const A=this;
+    ({
+      blip:  ()=>A.beep(680,0.05,'square',0.035),
+      step:  ()=>A.beep(340,0.05,'triangle',0.045),
+      hit:   ()=>A.beep(540,0.09,'square',0.06,0,190),
+      hurt:  ()=>A.beep(150,0.16,'sawtooth',0.07,0,60),
+      miss:  ()=>A.beep(240,0.07,'triangle',0.04,0,400),
+      gold:  ()=>{A.beep(880,0.06,'sine',0.06);A.beep(1318,0.1,'sine',0.05,0.06);},
+      gem:   ()=>{A.beep(1046,0.08,'triangle',0.055);A.beep(1568,0.11,'triangle',0.05,0.08);},
+      potion:()=>A.beep(280,0.2,'sine',0.06,0,640),
+      level: ()=>[523,659,784,1046].forEach((f,i)=>A.beep(f,0.13,'square',0.055,i*0.09)),
+      win:   ()=>[392,523,659].forEach((f,i)=>A.beep(f,0.11,'square',0.055,i*0.08)),
+      death: ()=>[392,294,196,110].forEach((f,i)=>A.beep(f,0.24,'sawtooth',0.06,i*0.19)),
+      roar:  ()=>{A.beep(95,0.8,'sawtooth',0.11,0,38);A.beep(64,1.0,'square',0.07,0.05,28);},
+      faerie:()=>[1568,1976,2637].forEach((f,i)=>A.beep(f,0.09,'triangle',0.05,i*0.07)),
+      run:   ()=>{A.beep(500,0.08,'triangle',0.05,0,900);A.beep(500,0.08,'triangle',0.04,0.1,900);},
+      err:   ()=>A.beep(110,0.16,'square',0.05),
+    }[name]||(()=>{}))();
+  },
+  TUNES:{
+    title:{bpm:76, wave:'triangle', bassWave:'sine', leadVol:0.05, bassVol:0.055,
+      lead:[[69,1],[0,1],[76,1],[0,1],[74,1],[0,1],[72,1],[0,1],
+            [71,1],[0,1],[72,1],[0,1],[71,2],[69,2],
+            [69,1],[0,1],[76,1],[0,1],[79,1],[0,1],[77,1],[0,1],
+            [76,1],[0,1],[74,1],[0,1],[72,2],[0,2]],
+      bass:[[45,8],[41,8],[43,8],[40,8]]},
+    town:{bpm:116, wave:'square', bassWave:'triangle', leadVol:0.035, bassVol:0.05,
+      lead:[[69,1],[67,1],[69,1],[72,1],[74,1],[72,1],[69,1],[67,1],
+            [64,1],[67,1],[69,1],[67,1],[69,2],[0,2],
+            [69,1],[67,1],[69,1],[72,1],[76,1],[74,1],[72,1],[74,1],
+            [76,1],[74,1],[72,1],[69,1],[69,2],[0,2]],
+      bass:[[45,2],[52,2],[45,2],[52,2],[43,2],[50,2],[43,2],[50,2],
+            [45,2],[52,2],[45,2],[52,2],[40,2],[47,2],[40,2],[47,2]]},
+    fight:{bpm:140, wave:'square', bassWave:'square', leadVol:0.032, bassVol:0.032,
+      lead:[[69,1],[69,1],[72,1],[69,1],[74,1],[69,1],[72,1],[69,1],
+            [71,1],[71,1],[74,1],[71,1],[76,1],[71,1],[74,1],[71,1],
+            [69,1],[69,1],[72,1],[69,1],[74,1],[69,1],[72,1],[69,1],
+            [77,1],[76,1],[74,1],[72,1],[71,2],[74,2]],
+      bass:[[45,2],[45,2],[45,2],[45,2],[43,2],[43,2],[43,2],[43,2],
+            [45,2],[45,2],[45,2],[45,2],[40,2],[40,2],[40,2],[40,2]]},
+    dragon:{bpm:84, wave:'sawtooth', bassWave:'square', leadVol:0.04, bassVol:0.05,
+      lead:[[62,2],[0,2],[65,2],[0,2],[63,2],[0,2],[62,4],
+            [62,2],[0,2],[65,2],[0,2],[68,2],[0,2],[67,4]],
+      bass:[[38,8],[39,8],[38,8],[37,8]]},
+  },
+  playTune(name){
+    this.lastTune=name;
+    if(this.music.timer && this.music.cur===name) return;
+    this.stopTune();
+    if(!OPT.music) return;
+    this.init(); if(!this.ctx) return;
+    const T=this.TUNES[name]; if(!T) return;
+    this.music.cur=name;
+    const e8=60/T.bpm/2;
+    const st={li:0,bi:0,lt:this.ctx.currentTime+0.1,bt:this.ctx.currentTime+0.1};
+    const tick=()=>{
+      if(this.music.cur!==name||!this.ctx) return;
+      const now=this.ctx.currentTime;
+      if(st.lt<now) st.lt=now+0.05;
+      if(st.bt<now) st.bt=now+0.05;
+      const horizon=now+0.4;
+      while(st.lt<horizon){
+        const n=T.lead[st.li];
+        if(n[0]) this.note(n[0], n[1]*e8*0.92, T.wave, T.leadVol, st.lt);
+        st.lt+=n[1]*e8; st.li=(st.li+1)%T.lead.length;
+      }
+      while(st.bt<horizon){
+        const n=T.bass[st.bi];
+        if(n[0]) this.note(n[0], n[1]*e8*0.95, T.bassWave, T.bassVol, st.bt);
+        st.bt+=n[1]*e8; st.bi=(st.bi+1)%T.bass.length;
+      }
+    };
+    tick();
+    this.music.timer=setInterval(tick,120);
+  },
+  stopTune(){
+    if(this.music.timer){ clearInterval(this.music.timer); this.music.timer=null; }
+    this.music.cur=null;
+  },
+};
+
+function flashHurt(){
+  const h=$('#hurt');
+  h.style.opacity=1;
+  setTimeout(()=>{ h.style.opacity=0; },130);
+}
+
+/* ---------------- ANSI-style location banners ---------------- */
+const BANNERS = {
+  forest:{cls:'art g', lines:[
+    "   ▲    ▲▲      ▲    ▲▲▲    ▲      ▲▲",
+    "  ▲▲▲  ▲▲▲▲   ▲▲▲   ▲▲▲▲▲  ▲▲▲   ▲▲▲▲",
+  ]},
+  inn:{cls:'art o', lines:[
+    "     ┌──────┐",
+    "     │▒▒▒▒▒▒├─┐",
+    "     │░░░░░░│ │",
+    "     └──────┘─┘",
+  ]},
+  bank:{cls:'art y', lines:[
+    "  █▀▀█  █▀▀█  █▀▀█",
+    "  █──█  █──█  █──█",
+    "  █▄▄█  █▄▄█  █▄▄█",
+  ]},
+  healer:{cls:'art c2', lines:[
+    "       │ │",
+    "      ╭┴─┴╮",
+    "      │░░░│",
+    "      ╰───╯",
+  ]},
+  castle:{cls:'art o', lines:[
+    "  ▄█▄   ▄▄▄   ▄█▄",
+    "  ███   ███   ███",
+    "  ███▄▄▄██▄▄▄███",
+  ]},
+  smithy:{cls:'art o', lines:[
+    "      ▄▄▄▄▄▄",
+    "   ▄▄▄█▄███▄█▄▄▄",
+    "   ▀▀▀▀▀▀▀▀▀▀▀▀▀",
+  ]},
+  barak:{cls:'art', lines:[
+    "     ▄▄▄▄▄▄▄",
+    "    │ ×    × │",
+    "    │  ╲  ╱  │",
+    "     ▀▀▀▀▀▀▀",
+  ]},
+  lair:{cls:'art', lines:[
+    "   ~▼~    ~▼~    ~▼~",
+    "    ▼      ▼      ▼",
+  ]},
+};
+function banner(name){
+  const b=BANNERS[name]; if(!b) return;
+  b.lines.forEach(l=>say(l,b.cls));
+}
+
+/* ---------------- terminal ---------------- */
+function say(html, cls){
+  const d=document.createElement('div');
+  d.className='line'+(cls?' '+cls:'');
+  d.innerHTML=html;
+  $('#term').appendChild(d);
+  $('#term').scrollTop=$('#term').scrollHeight;
+  upd();
+}
+function rule(){ say('-'.repeat(62),'hr'); }
+function cls_(){ $('#term').innerHTML=''; }
+function upd(){
+  if(!S){ $('#status').innerHTML='<span class="d">no character loaded</span>'; return; }
+  const p=S.p;
+  const hpWarn = p.hp <= p.maxhp*0.25 ? 'warn' : '';
+  $('#status').innerHTML =
+    `<span class="b">${esc(p.name)}</span> the ${CLASSES[p.cls].name} &middot; <span class="y">Lvl ${p.level}</span>`+
+    ` &middot; <span class="${hpWarn}">HP ${p.hp}/${p.maxhp}</span> &middot; Str ${p.str} / Def ${p.def} / Cha ${p.cha}<br>`+
+    `Gold <span class="y">${money(p.gold)}</span> &middot; Bank <span class="y">${money(p.bank)}</span>`+
+    ` &middot; <span class="c">Gems ${p.gems}</span> &middot; Potions ${p.potions}`+
+    ` &middot; <span class="b">Fights ${p.fights}</span> &middot; Duels ${p.duels} &middot; Day ${S.day}`;
+}
+
+/* menu(): options = [{key,label,fn}] ; clickable + typed */
+function menu(title, a, b){
+  /* accepts (title, opts) or (title, note, opts) */
+  const opts = Array.isArray(a) ? a : b;
+  const note = Array.isArray(a) ? b : a;
+  if(!opts){ say('(menu error: no options)','r'); return; }
+  if(title) say(title,'y');
+  if(note)  say(note,'d');
+  curOpts = opts; askCb=null;
+  lastMenuFn = ()=>menu(title,a,b);
+  opts.forEach((o,i)=>{
+    const line = `<span class="opt" data-i="${i}">[${i+1}] <span class="b">(${o.key})</span> ${o.label}</span>`;
+    say(line);
+  });
+  $('#term').scrollTop=$('#term').scrollHeight;
+}
+function ask(prompt, cb, kind){
+  say(prompt);
+  curOpts=null; askCb=cb;
+  lastMenuFn=null;
+  const inp=$('#cmd');
+  inp.placeholder = kind==='num' ? 'enter an amount (or ALL)':'' ;
+}
+$('#term').addEventListener('click', e=>{
+  const t=e.target.closest('.opt');
+  if(t && curOpts){ const o=curOpts[+t.dataset.i]; if(o){ $('#cmd').value=''; AU.sfx('blip'); o.fn(); autosave(); } }
+});
+$('#cmd').addEventListener('keydown', e=>{
+  if(e.key!=='Enter') return;
+  const v=e.target.value.trim(); e.target.value=''; e.target.placeholder='';
+  if(v===''){ if(lastMenuFn && !askCb){ cls_(); lastMenuFn(); } return; }
+  if(askCb){ const cb=askCb; askCb=null; cb(v); autosave(); return; }
+  if(curOpts){
+    const c=v[0].toLowerCase();
+    const o=curOpts.find(x=>x.key.toLowerCase()===c) || curOpts[+v-1];
+    if(o){ AU.sfx('blip'); o.fn(); }
+    else { AU.sfx('err'); say('Hm? Try a letter or number from the list.','d'); }
+    autosave();
+  }
+});
+document.addEventListener('mouseup', ()=>{ if(!window.getSelection().toString()) $('#cmd').focus(); });
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev, ()=>{ AU.init(); AU.nudge(); }, {once:true}));
+
+/* ---------------- save/load ---------------- */
+function autosave(){ if(S && S.started) save(); }
+function save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
+function load(){ try{ const s=localStorage.getItem(SAVE_KEY); return s?JSON.parse(s):null; }catch(e){ return null; } }
+function hofLoad(){ try{ return JSON.parse(localStorage.getItem(HOF_KEY)||'[]'); }catch(e){ return []; } }
+function hofAdd(entry){
+  const h=hofLoad(); h.push(entry);
+  h.sort((a,b)=> (b.dragon-a.dragon) || (b.lvl-a.lvl) || (a.day-b.day));
+  localStorage.setItem(HOF_KEY, JSON.stringify(h.slice(0,10)));
+}
+function optsSave(){ try{ localStorage.setItem(OPT_KEY, JSON.stringify(OPT)); }catch(e){} }
+function optsLoad(){ try{ const o=JSON.parse(localStorage.getItem(OPT_KEY)); if(o) OPT=Object.assign(OPT,o); }catch(e){} }
+
+/* ---------------- portable save codes ---------------- */
+function saveCode(data){
+  data = data || S;
+  try{ return btoa(unescape(encodeURIComponent(JSON.stringify(data)))); }catch(e){ return null; }
+}
+function loadCode(code){
+  try{
+    const s=JSON.parse(decodeURIComponent(escape(atob((code||'').trim()))));
+    if(s && s.p && s.p.name && typeof s.day==='number'){ if(s.started===undefined) s.started=true; return s; }
+  }catch(e){}
+  return null;
+}
+function exportSave(){
+  const data = (S && S.started) ? S : load();
+  if(!data){ say('No character to export yet.','d'); options(); return; }
+  const code=saveCode(data);
+  if(!code){ say('Something went horribly wrong encoding that.','r'); options(); return; }
+  rule();
+  say('<span class="y b">CHARACTER EXPORT CODE</span>');
+  say('Click the code to select all of it, copy with Ctrl+C, and keep it somewhere safe:');
+  say(`<span class="c b" style="user-select:all;word-break:break-all">${code}</span>`);
+  say('<span class="d">Feed it to "Import character code" on any copy of the game — v1 or v2, any browser, any machine.</span>');
+  rule();
+  options();
+}
+function importSave(){
+  ask('Paste thy character code, then press Enter: ', v=>{
+    const s=loadCode(v);
+    if(!s){ AU.sfx('err'); say('That code is garbled, adventurer. Check thy clipboard.','r'); title(); return; }
+    S=s; save();
+    cls_();
+    AU.sfx('level');
+    say(`<span class="g b">Welcome back, ${esc(S.p.name)} the ${CLASSES[S.p.cls].name}!</span> <span class="d">(Day ${S.day})</span>`);
+    town();
+  });
+}
+
+/* ---------------- day / rest ---------------- */
+function newDay(fromRest){
+  S.day++;
+  const p=S.p;
+  p.fights=25; p.duels=3;
+  const interest=Math.floor(p.bank*0.02);
+  if(interest>0){ p.bank+=interest; }
+  S.rivals.forEach(r=> r.xp += 800 + S.day*220 + rndi(0,500));
+  const lines=[];
+  lines.push(`<span class="c">The sun rises over the village of Thornhaven.</span> <span class="d">(Day ${S.day})</span>`);
+  if(interest>0) lines.push(`The bank adds <span class="y">${money(interest)}</span> gold interest to your account.`);
+  if(S.flags.married){
+    p.hp=p.maxhp;
+    const lunch=25+5*p.level;
+    p.gold+=lunch;
+    lines.push(`${esc(S.flags.spouse)} kisses you goodbye and slips you <span class="y">${money(lunch)}</span> gold for lunch. <span class="m">You feel loved (and fully healed).</span>`);
+  }
+  if(fromRest) lines.push('<span class="g">You wake refreshed. A full day of adventuring awaits.</span>');
+  lines.push('<span class="d">Inn gossip:</span> '+gossip());
+  rule(); lines.forEach(l=>say(l)); rule();
+}
+function gossip(){
+  return pick(GOSSIPS)
+    .replace('{R}', `<span class="c">${esc(pick(S.rivals).name)}</span>`)
+    .replace('{N}', `<span class="b">${esc(S.p.name)}</span>`);
+}
+
+/* ---------------- leveling ---------------- */
+function levelUps(){
+  const p=S.p; let leveled=false;
+  while(p.level<12 && p.xp>=LEVEL_XP[p.level+1]){
+    p.level++; leveled=true;
+    const hpGain = 9+rndi(0,6)+(p.cls==='dk'?3:p.cls==='vh'?2:1);
+    p.maxhp+=hpGain; p.hp=p.maxhp;
+    const prim=CLASSES[p.cls].primary;
+    p[prim==='str'?'str':prim==='def'?'def':'cha']++;
+    if(p.level%3===0){ p.str++; p.def++; p.cha++; }
+    rule();
+    say(`<span class="g b">*** THOU HAST GAINED LEVEL ${p.level}! ***</span>`);
+    say(`You feel stronger! +${hpGain} max HP, full healing, and your wits sharpen.`);
+    if(p.level===12){
+      say('<span class="r b">You are now mighty enough to dare the RED DRAGON itself...</span>');
+      say('<span class="d">(A new choice awaits you in the Forest.)</span>');
+    }
+    rule();
+    if(leveled) AU.sfx('level');
+  }
+  if(!leveled && p.level<12){
+    say(`<span class="d">Experience: ${money(p.xp)} / ${money(LEVEL_XP[p.level+1])} toward level ${p.level+1}.</span>`);
+  }
+}
+
+/* ---------------- combat ---------------- */
+let C=null;
+function playerAttackRaw(){
+  const p=S.p, w=WEAPONS[p.wIdx];
+  return w.p + Math.floor(p.str/2) + rndi(0,Math.floor(p.str/2)) + Math.floor(p.level/3);
+}
+function monsterAttack(m, mult, ignoreArmor){
+  const p=S.p;
+  const armor=ignoreArmor ? Math.floor(ARMORS[p.aIdx].d/2) : ARMORS[p.aIdx].d;
+  return m.pow + rndi(0,Math.floor(m.pow/2)) - armor - Math.floor(p.def/2);
+}
+function combat(cfg){
+  C = Object.assign({round:0, spCd:0}, cfg);
+  C.maxhp = C.maxhp || C.hp;
+  C.hp = C.maxhp;
+  rule();
+  say(`<span class="r b">*** ${esc(C.name)} ***</span>`);
+  if(C.flavor) say(`<span class="d">${C.flavor}</span>`);
+  AU.playTune(C.dragon?'dragon':'fight');
+  combatMenu();
+}
+function combatMenu(){
+  const p=S.p;
+  menu(`You: <span class="g">${p.hp}/${p.maxhp} HP</span>   Foe: <span class="r">${C.hp}/${C.maxhp} HP</span>`, [
+    {key:'F', label:'Fight!', fn:()=>playerAction('fight')},
+    {key:'S', label:`Special (${C.spCd>0?'ready in '+C.spCd:'ready'})`, fn:()=>playerAction('special')},
+    {key:'P', label:`Drink potion (${p.potions} left)`, fn:()=>playerAction('potion')},
+    {key:'R', label:'Run away', fn:()=>playerAction('run')},
+  ]);
+}
+function playerAction(kind){
+  const p=S.p;
+
+  if(kind==='potion'){
+    if(p.potions<=0){ AU.sfx('err'); say('You have no potions!','d'); combatMenu(); return; }
+  }
+  else if(kind==='special'){
+    if(C.spCd>0){ AU.sfx('err'); say('Your special move is still warming up!','d'); combatMenu(); return; }
+  }
+
+  if(C.spCd>0) C.spCd--;
+
+  if(kind==='potion'){
+    p.potions--; const h=Math.min(40,p.maxhp-p.hp); p.hp+=h;
+    AU.sfx('potion');
+    say(`<span class="g">You quaff a potion (+${h} HP).</span>`);
+  }
+  else if(kind==='run'){
+    const chance=C.dragon?0.55:0.7;
+    if(Math.random()<chance){
+      AU.sfx('run');
+      say('<span class="y">You flee with your dignity mostly intact!</span>');
+      C=null; afterCombat(false); return;
+    }
+    AU.sfx('err');
+    say('<span class="r">You try to run... and fail spectacularly!</span>');
+  }
+  else if(kind==='special'){
+    C.spCd=3;
+    if(p.cls==='dk'){
+      if(Math.random()<0.25){ AU.sfx('miss'); say('<span class="o">SKULLSPLITTER! You swing mightily at... air.</span>'); }
+      else{ const d=Math.max(1,Math.floor(playerAttackRaw()*2.2)-C.def); hitFoe(d,'<span class="o">SKULLSPLITTER!</span>'); }
+    } else if(p.cls==='sm'){
+      const d=10+Math.floor(WEAPONS[p.wIdx].p/2)+p.level*2+rndi(0,10);
+      hitFoe(d,'<span class="o">MYSTIC FIRE sears through its defenses!</span>');
+    } else {
+      const d=Math.max(1,Math.floor(playerAttackRaw()*1.3)-C.def);
+      const steal=C.gold?Math.min(C.gold, rndi(10,25)+C.tier*8):0;
+      if(steal>0){ C.gold-=steal; p.gold+=steal; }
+      hitFoe(d,'<span class="o">FEINT & FILCH!'+(steal>0?` You lift ${money(steal)} gold mid-swing!`:'')+'</span>');
+    }
+  }
+  else { /* fight */
+    const d=Math.max(1,playerAttackRaw()-C.def);
+    if(Math.random()<0.08){ AU.sfx('miss'); say('<span class="d">Your blow glances off its hide!</span>'); }
+    else hitFoe(d);
+  }
+
+  C.round++;
+  if(C.hp<=0){ winCombat(); return; }
+
+  /* monster turn */
+  const isBreath=C.dragon && C.round%4===0;
+  let dmg;
+  if(isBreath){
+    say('<span class="r b">The dragon rears back and inhales...</span>');
+    dmg=monsterAttack(C,1,true)+rndi(10,20);
+  } else {
+    dmg=monsterAttack(C,1,false);
+  }
+  if(dmg<=0){ AU.sfx('miss'); say(`The ${esc(C.name)} misses you!`); }
+  else{
+    p.hp-=dmg;
+    AU.sfx('hurt'); flashHurt();
+    say(isBreath
+      ? `<span class="r b">FIRE envelops you for ${dmg} damage!</span>`
+      : `The ${esc(C.name)} hits you for <span class="r">${dmg}</span> damage.`);
+  }
+  if(p.hp<=0){ loseCombat(); return; }
+  combatMenu();
+}
+function hitFoe(d,prefix){
+  C.hp-=d;
+  AU.sfx('hit');
+  say(`${prefix||''} You hit the ${esc(C.name)} for <span class="g">${d}</span>! ${C.hp>0?`(foe: ${C.hp}/${C.maxhp})`:''}`);
+}
+function winCombat(){
+  const p=S.p; const m=C; C=null;
+  rule();
+  say(`<span class="g b">VICTORY! The ${esc(m.name)} is defeated!</span>`);
+  if(!m.dragon){
+    const g=m.gold+rndi(0,Math.floor(m.gold/3));
+    p.gold+=g; p.xp+=m.xp;
+    AU.sfx('win');
+    say(`You loot <span class="y">${money(g)}</span> gold and gain <span class="c">${money(m.xp)}</span> experience.`);
+    AU.sfx('gold');
+  }
+  if(m.tier>=4 && Math.random()<0.12){ p.gems++; AU.sfx('gem'); say('<span class="c b">You find a GEM in the wreckage!</span>'); }
+  levelUps();
+  afterCombat(true, m);
+}
+function loseCombat(){
+  const p=S.p; const m=C; C=null;
+  if(m.spare){ /* Barak */
+    const loss=Math.floor(p.gold*0.10);
+    p.gold-=loss; p.hp=1;
+    rule();
+    AU.sfx('death');
+    say('<span class="r b">Barak plants you face-first in the dirt.</span>');
+    say(`"Come back when you can hold a sword, ${esc(p.name)}." He helps himself to <span class="y">${money(loss)}</span> gold "for the lesson."`);
+    say('<span class="d">He leaves you alive. Barely. (1 HP)</span>');
+    town();
+  } else {
+    death(m.name);
+  }
+}
+function death(killer){
+  const p=S.p;
+  const lost=p.gold; p.gold=0; p.hp=1;
+  const xpLoss=Math.floor(p.xp*0.05); p.xp-=xpLoss;
+  AU.stopTune(); AU.sfx('death');
+  cls_(); rule();
+  say([
+'              ________',
+'             /        \\',
+'            /  R. I. P \\',
+'           /            \\',
+`          |   ${esc(p.name).padEnd(9).slice(0,9)}    |`,
+'          |  "Nice try"  |',
+'          |______________|',
+  ].join('\n'),'art');
+  rule();
+  say(`<span class="r b">THOU HAST BEEN SLAIN by ${esc(killer)}!</span>`);
+  say(`The last thing you hear is jingling: <span class="y">${money(lost)}</span> gold scavenged from your pockets, and ${money(xpLoss)} experience worth of dignity.`);
+  say('<span class="g">The healer drags you back to town and patches you up out of pity. (1 HP)</span>');
+  say('<span class="d">Bank gold was safe. Smug bank gold.</span>');
+  town();
+}
+
+/* ---------------- forest ---------------- */
+function forest(){
+  const p=S.p;
+  banner('forest');
+  AU.playTune('town');
+  const opts=[{key:'E',label:'Explore the woods (uses 1 fight)',fn:explore}];
+  if(p.level>=12) opts.push({key:'D',label:'<span class="r b">Dare to face the RED DRAGON</span>',fn:dragonLair});
+  opts.push({key:'X',label:'Back to town',fn:town});
+  menu('-=> The Forest <=-',
+    p.fights>0?`<span class="d">${p.fights} fight${p.fights===1?'':'s'} left today.</span>`:'<span class="d">You are out of forest fights today.</span>',
+    opts);
+}
+function explore(){
+  const p=S.p;
+  if(p.fights<=0){ say('<span class="r">You are exhausted. No fights left today!</span>','d'); say('<span class="d">(Perhaps a room at the inn?)</span>'); forest(); return; }
+  p.fights--;
+  AU.sfx('step');
+  const roll=Math.random();
+  const tier=Math.min(11,Math.max(1,p.level+rndi(-1,1)));
+  if(roll<0.58){
+    const [name,quip]=pick(MONS[tier]);
+    combat({
+      name, flavor:quip, tier,
+      maxhp: 6*tier+rndi(0,4*tier),
+      pow:   2*tier+rndi(0,tier),
+      def:   tier,
+      gold:  10*tier+rndi(0,8*tier),
+      xp:    6*tier*tier+rndi(0,6*tier),
+      after:'forest',
+    });
+  } else if(roll<0.68){
+    const g=5*tier+rndi(0,10*tier);
+    p.gold+=g;
+    AU.sfx('gold');
+    say(`You stumble upon <span class="y">${money(g)}</span> gold just lying there. Finder's keepers!`);
+    forest();
+  } else if(roll<0.75){
+    const n=(Math.random()<0.15?2:1); p.gems+=n;
+    AU.sfx('gem');
+    say(`<span class="c b">You find ${n===1?'a GEM':'two GEMS'} glinting in the moss!</span>`);
+    forest();
+  } else if(roll<0.85){
+    faerie();
+  } else if(roll<0.95){
+    say(pick(FOREST_FLAVOR),'d');
+    forest();
+  } else {
+    forestEvent(tier);
+  }
+}
+function faerie(){
+  const p=S.p;
+  say('A tiny <span class="m">faerie</span> flutters out of a mushroom ring and circles you curiously...');
+  const r=Math.random();
+  if(r<0.35){ p.hp=p.maxhp; AU.sfx('faerie'); say('<span class="g b">She sprinkles glowing dust on you — fully healed!</span>'); }
+  else if(r<0.55){ p.cha++; AU.sfx('faerie'); say('<span class="m">She giggles and blesses your eyebrows. +1 Charm!</span>'); }
+  else if(r<0.70){ p.maxhp+=5; p.hp+=5; AU.sfx('faerie'); say('<span class="g">Her blessing toughens your hide. +5 max HP!</span>'); }
+  else if(r<0.85){ p.gems+=2; AU.sfx('gem'); say('<span class="c">She gifts you 2 GEMS "for the road."</span>'); }
+  else if(r<0.95){
+    const loss=Math.floor(p.gold*0.10); p.gold-=loss;
+    AU.sfx('err');
+    say(`<span class="r">...it is a WICKED faerie! She makes off with ${money(loss)} gold, cackling.</span>`);
+  } else {
+    p.hp=Math.max(1,p.hp-rndi(5,10));
+    AU.sfx('err'); flashHurt();
+    say('<span class="r">ZAP! A grumpy faerie zaps you for spite.</span> <span class="d">"For luck," she titters, leaving you barely standing.</span>');
+  }
+  forest();
+}
+function forestEvent(tier){
+  const p=S.p;
+  const r=Math.random();
+  if(r<0.35){ const x=20*p.level; p.xp+=x; say(`A wizened <span class="c">hermit</span> shares secrets of the woods. +${money(x)} experience.`); }
+  else if(r<0.65){
+    if(Math.random()<0.3){ const g=100+rndi(0,50); p.gold+=g; AU.sfx('gold'); say(`You catch a <span class="r">cutpurse</span> sneaking up... and introduce him to the ground. He drops <span class="y">${money(g)}</span> gold.`); }
+    else{ const loss=Math.floor(p.gold*rndi(5,15)/100); p.gold-=loss; AU.sfx('err'); say(`A <span class="r">cutpurse</span> relieves you of ${money(loss)} gold before melting into the ferns.`); }
+  }
+  else if(r<0.85){ if(p.potions<9){ p.potions++; AU.sfx('potion'); say('A kindly <span class="m">witch</span> hands you a potion. "Don\'t drink it all in one tavern," she warns.'); } else { say('A kindly witch would have given you a potion, but your pockets are full.','d'); } }
+  else { const g=8*tier+rndi(0,10*tier); p.gold+=g; AU.sfx('gold'); say(`You pry open a rotten chest: <span class="y">${money(g)}</span> gold, and one very alarmed beetle.`); }
+  forest();
+}
+
+/* ---------------- the red dragon ---------------- */
+function dragonLair(){
+  const slain=S.flags.dragonSlain||0;
+  rule();
+  banner('lair');
+  say('You follow the scorched trail to the <span class="r b">RED DRAGON\'s lair</span>...');
+  say('Mountains of gold. Bones of the overconfident. A heat like an open furnace.');
+  if(slain>0) say(`<span class="d">(The dragon's cousin is visiting. It is ${25*slain}% angrier.)</span>`);
+  menu('The tunnel rumbles with a voice like grinding stone:',[
+    {key:'D',label:'<span class="r b">"I HAVE COME FOR THEE, DRAGON!"</span>',fn:startDragon},
+    {key:'X',label:'Reconsider (live a little longer)',fn:forest},
+  ]);
+}
+function startDragon(){
+  const k=1+(S.flags.dragonSlain||0)*0.25;
+  AU.sfx('roar');
+  say('"ANOTHER SNACK CRAWLS INTO MY LAIR," the dragon rumbles, unfolding like a burning mountain.');
+  combat({
+    name:'RED DRAGON', flavor:'Its eyes are older than the village. Its breath is worse.', tier:12,
+    maxhp:Math.round(400*k), pow:Math.round(44*k), def:20,
+    gold:0, xp:0, dragon:true, after:'dragon',
+  });
+}
+function dragonVictory(){
+  cls_();
+  AU.stopTune(); AU.sfx('level');
+  say('=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".="','art gold');
+  say([
+'    ~   D R A G O N   S L A I N   ~',
+'    Thou art a LEGEND of the Realm',
+  ].join('\n'),'art gold');
+  say('=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".=".="','art gold');
+  say('<span class="y b">THE RED DRAGON LIES SLAIN AT YOUR FEET.</span>');
+  say('The villagers pour from Thornhaven, cheering. Someone starts carving a statue before the smoke clears. Barak asks you to sign his helmet.');
+  const reward=50000; S.p.gold+=reward;
+  S.flags.dragonSlain=(S.flags.dragonSlain||0)+1;
+  hofAdd({name:S.p.name, cls:CLASSES[S.p.cls].name, lvl:S.p.level, day:S.day, dragon:S.flags.dragonSlain, date:new Date().toLocaleDateString()});
+  AU.sfx('gold');
+  say(`You cart off <span class="y">${money(reward)}</span> gold from the hoard and your name is entered in the <span class="c">HALL OF FAME</span>.`);
+  menu('What now, legend?',[
+    {key:'K',label:'Keep adventuring (the realm still needs you)',fn:town},
+    {key:'R',label:'Retire in glory (end this character)',fn:retire},
+  ]);
+}
+function afterCombat(won, m){
+  if(m && m.after==='dragon'){ dragonVictory(); return; }
+  if(m && m.spare){
+    rule();
+    say('<span class="g b">Barak hits the dirt! The crowd goes feral!</span>');
+    say('"Lucky swing," Barak mutters, retreating with what dignity remains.');
+    say('<span class="d">(The crowd\'s "voluntary donations" are already in your pouch — see the loot above.)</span>');
+    town(); return;
+  }
+  forest();
+}
+
+/* ---------------- town & locations ---------------- */
+function town(){
+  AU.playTune('town');
+  const p=S.p;
+  let note='';
+  if(p.fights===0 && p.duels===0) note='<span class="d">You are out of fights and duels for today. The inn rents rooms...</span>';
+  menu('-=> The Village of Thornhaven <=-', note, [
+    {key:'F',label:'The Forest — adventure & combat',fn:forest},
+    {key:'G',label:'Blades & Brew — weapons & armor',fn:smithy},
+    {key:'B',label:'The First Bank of Thornhaven',fn:bank},
+    {key:'H',label:"The Healer's Hut",fn:healer},
+    {key:'I',label:'The Inn — ale, gossip, romance, rest',fn:inn},
+    {key:'C',label:'The Castle — rankings & royal bounty',fn:castle},
+    {key:'A',label:"Barak's Corner — the town bully",fn:barak},
+    {key:'M',label:'Review thyself (character sheet)',fn:stats},
+    {key:'O',label:'Options',fn:options},
+    {key:'?',label:'Help / about',fn:helpScreen},
+    {key:'Q',label:'Log out — return to title (progress is saved)',fn:logout},
+  ]);
+}
+function logout(){
+  autosave();
+  rule();
+  say('<span class="g b">Thy legend is recorded. Rest well, adventurer.</span>');
+  say('<span class="d">(Progress autosaves after every action — logging out just returns you to the title screen.)</span>');
+  rule();
+  title();
+}
+function stats(){
+  const p=S.p;
+  rule();
+  say(`<span class="y b">         ${esc(p.name)} the ${CLASSES[p.cls].name}</span>`);
+  say(` Level ${p.level}   Experience: ${money(p.xp)}${p.level<12?` / ${money(LEVEL_XP[p.level+1])}`:' (MAX)'}`);
+  say(` HP: ${p.hp}/${p.maxhp}   Str: ${p.str}   Def: ${p.def}   Charm: ${p.cha}`);
+  say(` Weapon: <span class="o">${WEAPONS[p.wIdx].n}</span> (+${WEAPONS[p.wIdx].p} atk)`);
+  say(` Armor:  <span class="o">${ARMORS[p.aIdx].n}</span> (+${ARMORS[p.aIdx].d} def)`);
+  say(` Gold: ${money(p.gold)}   Bank: ${money(p.bank)}   Gems: ${p.gems}   Potions: ${p.potions}`);
+  say(` Fights left: ${p.fights}   Duels left: ${p.duels}   Day: ${S.day}`);
+  if(S.flags.married) say(` Status: <span class="m b">happily married to ${esc(S.flags.spouse)}</span>`);
+  if(S.flags.dragonSlain) say(` Dragons slain: <span class="r b">${S.flags.dragonSlain}</span>`);
+  rule();
+  town();
+}
+function smithy(){
+  rule();
+  banner('smithy');
+  say('<span class="c b">BLADES & BREW</span> — Grimble the dwarf squints at you from behind an anvil.');
+  menu(`You carry ${WEAPONS[S.p.wIdx].n} and wear ${ARMORS[S.p.aIdx].n}.`,[
+    {key:'W',label:'Browse weapons',fn:()=>shopBuy('w')},
+    {key:'A',label:'Browse armor',fn:()=>shopBuy('a')},
+    {key:'X',label:'Leave',fn:town},
+  ]);
+}
+function shopBuy(kind){
+  const p=S.p;
+  const list=kind==='w'?WEAPONS:ARMORS;
+  const idx=kind==='w'?p.wIdx:p.aIdx;
+  const cur=list[idx], next=list[idx+1];
+  if(!next){
+    say(`Grimble looks you over. "That's the finest ${kind==='w'?'blade':'harness'} money can buy. Ain't got better. Come back after you kill somethin' big."`,'d');
+    smithy(); return;
+  }
+  say(`Current: <span class="o">${cur.n}</span> (${kind==='w'?'+'+cur.p+' atk':'+'+cur.d+' def'})`);
+  say(`Offered: <span class="y b">${next.n}</span> (${kind==='w'?'+'+next.p+' atk':'+'+next.d+' def'}) — <span class="y">${money(next.c)} gold</span>`);
+  menu('"Coin first, heroics later."',[ 
+    {key:'Y',label:`Buy it (${money(next.c)} gold)`,fn:()=>{
+      if(p.gold<next.c){ AU.sfx('err'); say(`Grimble snorts. "Come back with ${money(next.c-p.gold)} more gold."`,'r'); smithy(); return; }
+      p.gold-=next.c;
+      if(kind==='w') p.wIdx=idx+1; else p.aIdx=idx+1;
+      AU.sfx('level');
+      say(`<span class="g b">You strap on the ${next.n}! Grimble sheds a single proud tear.</span>`);
+      smithy();
+    }},
+    {key:'N',label:'Not today',fn:smithy},
+  ]);
+}
+function bank(){
+  rule();
+  banner('bank');
+  say('<span class="c b">THE FIRST BANK OF THORNHAVEN</span> — marble, vaults, one suspiciously twitchy teller.');
+  say(`On hand: <span class="y">${money(S.p.gold)}</span>   In vault: <span class="y">${money(S.p.bank)}</span>   <span class="d">(2% daily interest; vault gold survives death)</span>`);
+  menu('The teller peers down her spectacles.',[
+    {key:'D',label:'Deposit',fn:()=>ask('Deposit how much? ',v=>{
+      const n=parseAmt(v,S.p.gold); if(n===null){AU.sfx('err');say('The teller sighs at your gibberish.','d');bank();return;}
+      S.p.gold-=n;S.p.bank+=n;AU.sfx('gold');say(`<span class="g">Deposited ${money(n)} gold.</span>`);bank();
+    },'num')},
+    {key:'W',label:'Withdraw',fn:()=>ask('Withdraw how much? ',v=>{
+      const n=parseAmt(v,S.p.bank); if(n===null){AU.sfx('err');say('The teller sighs at your gibberish.','d');bank();return;}
+      S.p.bank-=n;S.p.gold+=n;AU.sfx('gold');say(`<span class="g">Withdrew ${money(n)} gold.</span>`);bank();
+    },'num')},
+    {key:'X',label:'Leave',fn:town},
+  ]);
+}
+function parseAmt(v,max){
+  v=(v||'').trim().toLowerCase();
+  if(v==='all'||v==='max') return Math.max(0,max);
+  const n=parseInt(v,10);
+  if(isNaN(n)||n<0) return null;
+  return Math.min(n,max);
+}
+function healer(){
+  const p=S.p;
+  rule();
+  banner('healer');
+  say("<span class=\"c b\">THE HEALER'S HUT</span> — drying herbs, a kettle, and Mother Malice's knowing look.");
+  const missing=p.maxhp-p.hp;
+  const cost=missing*2;
+  say(`HP: ${p.hp}/${p.maxhp}.  Full healing: <span class="y">${money(cost)}</span> gold.  Potions (heal 40): <span class="y">30</span> gold each (you carry ${p.potions}/9).`);
+  menu("'Lie still and pick one, sugar.'",[
+    {key:'H',label:`Full healing (${money(cost)} gold)`,fn:()=>{
+      if(missing===0){ say("'Fit as a fiddle already. Shoo.'",'d'); healer(); return; }
+      if(p.gold<cost){ AU.sfx('err'); say("'Healing ain't free, sugar.' She points at the door you came in through.",'r'); healer(); return; }
+      p.gold-=cost;p.hp=p.maxhp;AU.sfx('potion');say('<span class="g b">You feel like new! (HP fully restored)</span>');healer();
+    }},
+    {key:'P',label:'Buy a potion (30 gold)',fn:()=>{
+      if(p.potions>=9){ say("'Your pockets are full of bottles, sugar.'",'d'); healer(); return; }
+      if(p.gold<30){ AU.sfx('err'); say("'No coin, no potion.' Simple economics.",'r'); healer(); return; }
+      p.gold-=30;p.potions++;AU.sfx('potion');say('<span class="g">You tuck a potion into your belt.</span>');healer();
+    }},
+    {key:'X',label:'Leave',fn:town},
+  ]);
+}
+function inn(){
+  const p=S.p;
+  const T=romanceTarget();
+  rule();
+  banner('inn');
+  say('<span class="c b">THE RUSTY GOBLET INN</span> — firelight, sawdust floors, and the smell of stew and ambition.');
+  const roomCost=10+p.level*5;
+  const opts=[];
+  if(S.flags.married){
+    opts.push({key:'V',label:`Visit ${esc(S.flags.spouse)} (your beloved)`,fn:visitSpouse});
+  } else {
+    opts.push({key:'T',label:`Talk with ${T}`,fn:flirtTalk});
+    opts.push({key:'B',label:`Buy ${T} a drink (10 gold)`,fn:()=>gift(2,'drink')});
+    opts.push({key:'F',label:`Give ${T} flowers (30 gold)`,fn:()=>gift(4,'flowers')});
+    opts.push({key:'J',label:`Give ${T} a gem`,fn:()=>gift(8,'gem')});
+    if(S.rel>=18 && p.level>=5) opts.push({key:'P',label:`<span class="m b">Propose marriage to ${T}</span>`,fn:propose});
+  }
+  opts.push({key:'L',label:'Listen to the bard (Seth Able plays!)',fn:bard});
+  opts.push({key:'G',label:'Ask around for gossip',fn:()=>{ rule(); say('<span class="d">Heard at the bar:</span> '+gossip()); inn(); }});
+  opts.push({key:'A',label:'Buy ale for the house (40 gold, +1 Charm)',fn:()=>{
+    if(p.gold<40){ AU.sfx('err'); say('The barkeep laughs. "Ale first, coin first."','r'); inn(); return; }
+    p.gold-=40; p.cha++;
+    AU.sfx('gold');
+    say('<span class="g">You buy a round for the house! The crowd roars your name. +1 Charm.</span>'); inn();
+  }});
+  opts.push({key:'R',label:`Rent a room & sleep — heals fully, starts a NEW DAY (${money(roomCost)} gold)`,fn:()=>rest(roomCost)});
+  opts.push({key:'X',label:'Back to town',fn:town});
+  menu(`"What'll it be, ${esc(p.name)}?" the barkeep asks.`,opts);
+}
+function romanceTarget(){ return S.p.sex==='f' ? 'Seth Able' : 'Violet'; }
+function flirtTalk(){
+  const p=S.p, T=romanceTarget();
+  const stage=S.rel<8?'low':S.rel<18?'mid':'high';
+  const lines={
+    low:  {v:"Violet slides you a mug and barely looks up. 'You again.'", s:"Seth Able nods politely between verses. 'Er, hi.'"},
+    mid:  {v:"Violet smiles. 'Back so soon, {N}?'", s:"Seth grins mid-chord. 'My favorite audience member returns!'"},
+    high: {v:"Violet squeezes your arm. 'You be careful out there, {N}, you hear?'", s:"Seth dedicates a ballad to you. It is slightly embarrassing. You love it."},
+  };
+  say(lines[stage][p.sex==='f'?'s':'v'].replace('{N}',esc(p.name)));
+  if(p.cha + rndi(-2,4) >= 10){
+    S.rel+=2;
+    AU.sfx('faerie');
+    say(`<span class="m">The conversation sparkles! (${T} likes you a little more.)</span>`);
+    if(Math.random()<0.15){ p.cha++; say('<span class="g">You feel devilishly charming. +1 Charm.</span>'); }
+  } else {
+    S.rel=Math.max(0,S.rel-1);
+    AU.sfx('err');
+    say(`<span class="r">...${T} walks off mid-sentence. Ouch. (-1 affection)</span>`);
+  }
+  inn();
+}
+function gift(points,kind){
+  const p=S.p, T=romanceTarget();
+  if(kind==='drink'){ if(p.gold<10){ AU.sfx('err'); say('You cannot afford a drink. This is the saddest thing.','r'); inn(); return; } p.gold-=10; }
+  if(kind==='flowers'){ if(p.gold<30){ AU.sfx('err'); say('The flower seller only takes coin.','r'); inn(); return; } p.gold-=30; }
+  if(kind==='gem'){ if(p.gems<1){ AU.sfx('err'); say('You pat your gem pouch. It is empty and sad.','r'); inn(); return; } p.gems--; }
+  S.rel+=points;
+  const quips={
+    drink:{v:"Violet sips the wine you bought her. 'A ${C} with taste. Rare.'",s:"Seth downs the ale and bursts into an improvised song about you."},
+    flowers:{v:"Violet tucks a flower behind her ear and beams at you.",s:"Seth wears the flower through his hatband for the rest of the night."},
+    gem:{v:"Violet gasps at the gem. 'For ME? You sweetheart!'",s:"Seth holds the gem up to the lamplight, speechless for once."},
+  };
+  let q=quips[kind][p.sex==='f'?'s':'v'].replace('${C}',CLASSES[p.cls].name);
+  AU.sfx('faerie');
+  say(`<span class="m">${q}</span>`);
+  if(S.rel>=25 && !S.flags.married) say(`<span class="d">(${T} glances at you differently lately...)</span>`);
+  inn();
+}
+function propose(){
+  const p=S.p, T=romanceTarget();
+  if(S.rel>=25 && p.cha>=14 && p.level>=5){
+    S.flags.married=true; S.flags.spouse=T;
+    rule();
+    AU.sfx('level');
+    say(`<span class="m b">${T} tears up. "Yes! YES!"</span>`);
+    say(`The whole inn erupts. Barak cries a little and denies it forever. The wedding is that very evening — stew for everyone!`);
+    say(`<span class="g b">You and ${T} are married!</span> <span class="d">(Each morning: full healing + lunch money.)</span>`);
+  } else {
+    AU.sfx('err');
+    say(`${T} laughs so hard a tray gets dropped. "Ask me when you're somebody, sweetheart."`);
+    say('<span class="d">(Win more affection, charm, and renown first.)</span>');
+  }
+  inn();
+}
+function visitSpouse(){
+  const p=S.p;
+  p.hp=Math.min(p.maxhp,p.hp+15);
+  AU.sfx('potion');
+  say(`<span class="m">${esc(S.flags.spouse)} patches your scrapes, tells you you're brave, and smuggles you pie.</span> <span class="g">(+15 HP)</span>`);
+  inn();
+}
+function bard(){
+  const p=S.p;
+  if(S.flags.married && S.flags.spouse==='Seth Able'){
+    say('<span class="m">Your husband leans in and plays the song from your wedding. You are OBLIGATED to enjoy it.</span>');
+    inn(); return;
+  }
+  rule();
+  AU.sfx('faerie');
+  say('<span class="c b">SETH ABLE THE BARD</span> strikes a pose on the hearth...');
+  say('"' + pick(JOKES) + '"');
+  say('<span class="d">The crowd groans. Seth bows deeply. Groans are applause to a bard.</span>');
+  menu('Seth winks at the tip jar.',[
+    {key:'T',label:'Tip him a gem (+1 Charm)',fn:()=>{
+      if(p.gems<1){ AU.sfx('err'); say('No gems, no tip. Seth understands. He does not approve.','d'); bard(); return; }
+      p.gems--; p.cha++;
+      AU.sfx('gem');
+      say('<span class="g">Seth sings your praises to the whole room! +1 Charm.</span>'); bard();
+    }},
+    {key:'X',label:'Enough culture for tonight',fn:inn},
+  ]);
+}
+function rest(cost){
+  const p=S.p;
+  if(p.gold<cost){ AU.sfx('err'); say('The innkeep shakes his head. "Room\'s for payin\' guests."','r'); inn(); return; }
+  if(OPT.classicGate && S.lastRestReal && Date.now()-S.lastRestReal < 20*3600*1000){
+    say('<span class="y">The inn is full — "Come back tomorrow, friend."</span>');
+    say('<span class="d">(Classic mode: one day per real-world day. Toggle in Options.)</span>');
+    inn(); return;
+  }
+  p.gold-=cost; p.hp=p.maxhp;
+  S.lastRestReal=Date.now();
+  cls_();
+  say('You take a room upstairs. The straw mattress is exactly as romantic as it sounds.');
+  newDay(true);
+  town();
+}
+function castle(){
+  rule();
+  banner('castle');
+  say('<span class="c b">THE CASTLE</span> — banners, guards, and King Reginald the Mostly Brave on a modest throne.');
+  menu(null,[
+    {key:'L',label:'View the Realm Rankings',fn:ladder},
+    {key:'K',label:"Seek the King's favor (daily bounty)",fn:bounty},
+    {key:'X',label:'Back to town',fn:town},
+  ]);
+}
+function ladder(){
+  rule();
+  say('<span class="y b">      REALM RANKINGS — MIGHTIEST ADVENTURERS</span>');
+  const rows=[...S.rivals.map(r=>({name:r.name,cls:r.cls,xp:r.xp,you:false})),
+              {name:S.p.name,cls:CLASSES[S.p.cls].name,xp:S.p.xp,you:true}];
+  rows.sort((a,b)=>b.xp-a.xp);
+  rows.forEach((r,i)=>{
+    const lvl=levelOf(r.xp);
+    say(`${String(i+1).padStart(2)}. ${r.you?'<span class="g b">'+esc(r.name)+'</span>':'<span class="c">'+esc(r.name)+'</span>'} the ${r.cls} — Level ${lvl} (${money(r.xp)} xp)${r.you?' <span class="g b">&lt;— you</span>':''}`);
+  });
+  castle();
+}
+function levelOf(xp){
+  let lv=1; for(let l=2;l<=12;l++){ if(xp>=LEVEL_XP[l]) lv=l; } return lv;
+}
+function bounty(){
+  const p=S.p;
+  const top=Math.max(...S.rivals.map(r=>r.xp));
+  if(p.xp>top){
+    if(S.flags.bountyDay===S.day){ say('"A bounty a day, that\'s the rule!" the King chuckles. "Come back tomorrow."','d'); castle(); return; }
+    const g=100*p.level; p.gold+=g; S.flags.bountyDay=S.day;
+    rule();
+    AU.sfx('gold');
+    say(`<span class="y b">"Ah, ${esc(p.name)}! Number one on my ladder!"</span> the King declares.`);
+    say(`He tosses you a royal purse of <span class="y">${money(g)}</span> gold. <span class="d">"Don't spend it all on ale." (Everyone spends it on ale.)</span>`);
+  } else {
+    say('The King studies the ladder. "Come back when you outrank the others, won\'t you?"','d');
+  }
+  castle();
+}
+function barak(){
+  const p=S.p;
+  rule();
+  banner('barak');
+  say('<span class="o b">BARAK THE BULLY</span> leans against the well, flexing at nobody in particular.');
+  say(pick(INSULTS).replace('{N}',`<span class="b">${esc(p.name)}</span>`).replace('{A}',ARMORS[p.aIdx].n));
+  menu('A small crowd gathers, hoping for entertainment.',[
+    {key:'D',label:`Duel him! (uses 1 duel — ${p.duels} left)`,fn:duelBarak},
+    {key:'I',label:'Insult him right back',fn:insultBack},
+    {key:'X',label:'Walk away (the mature option)',fn:town},
+  ]);
+}
+function duelBarak(){
+  const p=S.p;
+  if(p.duels<=0){ say(`Barak yawns. "You're done for the day, hero."`,'d'); barak(); return; }
+  p.duels--;
+  say('"Finally! Entertainment!" Barak cracks his knuckles. The crowd forms a circle.');
+  combat({
+    name:'Barak the Bully', flavor:'He fights dirty and smells worse.', tier:p.level,
+    maxhp:30+8*p.level, pow:3+3*p.level, def:p.level,
+    gold:40+20*p.level, xp:60+30*p.level,
+    spare:true, after:'town',
+  });
+}
+function insultBack(){
+  const p=S.p;
+  const comebacks=[
+    '"I\'ve heard better comebacks from a drunk harpy, Barak."',
+    '"Is that your face, or did your armor rust shut?"',
+    '"They call you Barak the Bully because \'Barak the Bench\' was taken."',
+    '"I would trade insults, but you clearly brought your best already."',
+  ];
+  say(pick(comebacks));
+  if(p.cha+rndi(0,6)>=12){ p.cha++; AU.sfx('faerie'); say('<span class="g">The crowd HOWLS. Barak turns purple. +1 Charm.</span>'); }
+  else { p.cha=Math.max(1,p.cha-1); AU.sfx('err'); say('<span class="r">It lands like a wet sandal. Somewhere, a cricket chirps. -1 Charm.</span>'); }
+  barak();
+}
+
+/* ---------------- options / help / hof ---------------- */
+function options(){
+  menu('-=> Options <=-',null,[
+    {key:'C',label:`CRT scanlines: ${OPT.crt?'ON':'OFF'}`,fn:()=>{OPT.crt=!OPT.crt;applyOpts();optsSave();options();}},
+    {key:'T',label:`Classic daily gate (1 real day per rest): ${OPT.classicGate?'ON':'OFF'}`,fn:()=>{OPT.classicGate=!OPT.classicGate;optsSave();options();}},
+    {key:'S',label:`Sound FX: ${OPT.sfx?'ON':'OFF'}`,fn:()=>{OPT.sfx=!OPT.sfx;optsSave();options();}},
+    {key:'M',label:`Music: ${OPT.music?'ON':'OFF'}`,fn:()=>{
+      OPT.music=!OPT.music; optsSave();
+      if(OPT.music){ AU.music.cur=null; AU.playTune(S&&S.started?'town':'title'); }
+      else AU.stopTune();
+      options();
+    }},
+    {key:'E',label:'Export character code',fn:exportSave},
+    {key:'I',label:'Import character code',fn:importSave},
+    ...(S&&S.started?[{key:'R',label:'<span class="y">Retire this character (Hall of Fame)</span>',fn:confirmRetire}]:[]),
+    ...(S?[{key:'W',label:'<span class="r">Wipe save data</span>',fn:confirmWipe}]:[]),
+    {key:'X',label:'Back',fn:()=>S&&S.started?town():title()},
+  ]);
+}
+function confirmRetire(){
+  menu('Retire now? Your legend is recorded in the Hall of Fame.',[
+    {key:'Y',label:'Yes — hang up the sword',fn:retire},
+    {key:'N',label:'No — one more dragon first',fn:options},
+  ]);
+}
+function retire(){
+  hofAdd({name:S.p.name,cls:CLASSES[S.p.cls].name,lvl:S.p.level,day:S.day,dragon:S.flags.dragonSlain||0,date:new Date().toLocaleDateString()});
+  say(`<span class="y b">${esc(S.p.name)} retires to a farmhouse with a suspicious number of dragon souvenirs.</span>`);
+  localStorage.removeItem(SAVE_KEY); S=null;
+  title();
+}
+function confirmWipe(){
+  menu('<span class="r">Erase your character and day count? (Hall of Fame survives.)</span>',[
+    {key:'Y',label:'Yes, wipe it',fn:()=>{localStorage.removeItem(SAVE_KEY);S=null;cls_();title();}},
+    {key:'N',label:'Cancel',fn:options},
+  ]);
+}
+function hallOfFame(){
+  rule();
+  say('<span class="y b">          ~ HALL OF FAME ~</span>');
+  const h=hofLoad();
+  if(!h.length) say('<span class="d">No legends yet. The pedestal is suspiciously clean.</span>');
+  h.forEach((e,i)=>{
+    say(`${String(i+1).padStart(2)}. <span class="b">${esc(e.name)}</span> the ${esc(e.cls)} — Lvl ${e.lvl}, Day ${e.day}${e.dragon?`, <span class="r b">dragons slain: ${e.dragon}</span>`:' <span class="d">(no dragon yet)</span>'} <span class="d">${esc(e.date||'')}</span>`);
+  });
+  rule();
+  title();
+}
+function helpScreen(){
+  rule();
+  say('<span class="y b">HOW TO PLAY</span>');
+  say('• Type the letter of a choice and press Enter (or just click the line).');
+  say('• Each day: <span class="b">25 forest fights</span> and <span class="b">3 duels</span>. Sleep at the inn for a new day.');
+  say('• Fight in the forest to gain experience. At <span class="b">level 12</span>, the Red Dragon awaits.');
+  say('• Bank gold survives death — pocket gold does not. The healer is cheaper than dying.');
+  say('• Romance Violet (or Seth Able, if you prefer) at the inn. Gems make excellent gifts.');
+  say('• Barak has it coming. The King rewards the #1 ranked adventurer daily.');
+  say('• Your game <span class="g">autosaves in this browser</span> after every action.');
+  say('• <span class="b">v1.0:</span> chiptune music & sound effects (toggle in Options), ANSI banners, damage flash.');
+  say('<span class="d">• A loving homage to Seth Able Robinson\'s 1989 BBS classic, "Legend of the Red Dragon." All code and text here is original.</span>','d');
+  rule();
+  if(S&&S.started) town(); else title();
+}
+function applyOpts(){ $('#scan').className=OPT.crt?'':'off'; }
+
+/* ---------------- character creation ---------------- */
+function newGame(){
+  cls_();
+  say('<span class="y b">A NEW ADVENTURER ARRIVES IN THORNHAVEN</span>');
+  say('The village lives in fear of the RED DRAGON of the north ridge.');
+  say('Gold, glory, and extremely questionable romance await.');
+  ask('What is thy name, traveler? ', name=>{
+    const nm=(name||'').trim().slice(0,15);
+    if(!nm){ say('The gate guard squints. "Got a name or not?"','d'); newGame(); return; }
+    S={started:false,day:1,lastRestReal:Date.now(),rel:0,flags:{},rivals:RIVAL_SEED.map((r,i)=>({name:r.name,cls:r.cls,xp:100+i*250+rndi(0,200)}))};
+    S.p={name:nm,cls:'dk',sex:'m',level:1,xp:0,hp:20+rndi(0,8),maxhp:0,str:4+rndi(0,3),def:4+rndi(0,3),cha:8+rndi(0,6),
+         gold:100,bank:0,gems:0,potions:1,wIdx:0,aIdx:0,fights:25,duels:3};
+    S.p.maxhp=S.p.hp;
+    askSex();
+  });
+}
+function askSex(){
+  menu(`And art thou, ${esc(S.p.name)}, male or female?`,[
+    {key:'M',label:'Male',fn:()=>{S.p.sex='m';askClass();}},
+    {key:'F',label:'Female',fn:()=>{S.p.sex='f';askClass();}},
+  ]);
+}
+function askClass(){
+  menu('Choose thy calling:',[
+    {key:'D',label:`<span class="r">Death Knight</span> — ${CLASSES.dk.blurb}`,fn:()=>begin('dk')},
+    {key:'S',label:`<span class="c">Shadow Mage</span> — ${CLASSES.sm.blurb}`,fn:()=>begin('sm')},
+    {key:'V',label:`<span class="y">Valhalla</span> — ${CLASSES.vh.blurb}`,fn:()=>begin('vh')},
+  ]);
+}
+function begin(cls){
+  S.p.cls=cls; S.started=true;
+  cls_();
+  rule();
+  say(`<span class="y b">Welcome, ${esc(S.p.name)} the ${CLASSES[cls].name}!</span>`);
+  say('You have 100 gold, a rusty egg spoon, and a dream.');
+  say('The forest hums with monsters; the inn hums with gossip; the dragon... does not hum. It rumbles.');
+  say('<span class="d">(Every action autosaves. Type ? at the town menu for help.)</span>');
+  rule();
+  save();
+  town();
+}
+
+/* ---------------- title / boot ---------------- */
+const TITLE_ART = String.raw`             __====-_  _-====__
+      _--^^^#####//      \\#####^^^--_
+   _-^##########// (    ) \\##########^-_
+  -############//  |\^^/|  \\############-
+ _/############//   (@::@)   \\############\_
+/#############((     \\//     ))#############\
+-#############\\              //#############-
+ _^##############   _    _   ##############^_
+   ^-##############/(#)--(#)\##############^-`
++ '\n\n        L E G E N D   O F   T H E\n\n             R E D   D R A G O N';
+
+function title(){
+  cls_(); S=null;
+  const hasSave=!!load();
+  say(TITLE_ART,'art');
+  say('<span class="d">a browser homage to the 1989 BBS door classic — now with sound!</span>');
+  rule();
+  const opts=[];
+  if(hasSave) opts.push({key:'C',label:'<span class="g b">Continue thy legend</span>',fn:continueGame});
+  opts.push({key:'N',label:'Begin a NEW legend',fn:newGame});
+  opts.push({key:'I',label:'Import character code',fn:importSave});
+  opts.push({key:'H',label:'Hall of Fame',fn:hallOfFame});
+  opts.push({key:'O',label:'Options',fn:options});
+  opts.push({key:'?',label:'Help / about',fn:helpScreen});
+  menu(null,null,opts);
+  AU.playTune('title');
+}
+function continueGame(){
+  S=load();
+  if(!S){ say('No save found!','r'); newGame(); return; }
+  cls_();
+  say(`<span class="y b">Welcome back, ${esc(S.p.name)} the ${CLASSES[S.p.cls].name}!</span> <span class="d">(Day ${S.day})</span>`);
+  if(S.p.fights===0 && S.p.duels===0) say('<span class="d">You are out of fights and duels — the inn rents rooms...</span>');
+  town();
+}
+
+/* ---------------- boot ---------------- */
+optsLoad(); applyOpts();
+window.addEventListener('beforeunload', ()=>{ autosave(); });
+title();
+$('#cmd').focus();
+</script>
+</body>
+</html>
