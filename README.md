@@ -37,7 +37,7 @@ attachment preview.  Only tested on Windows 11 - Firefox as of August 22, 2026.
 > for how to move a character between browsers or devices.
 
 ---
-
+![ gameplay demo](demo.mp4)
 ## 🗡️ The Game
 
 You are an adventurer in the village of **Thornhaven**, which lives in fear of the
